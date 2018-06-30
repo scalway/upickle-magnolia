@@ -1,5 +1,5 @@
 package upickle
-import com.scalway.upickleMagnolia.rabbi.UpickleDerivation
+import com.scalway.upickleMagnolia.rabbi.{UpickleDerivation, UpickleDerivationR, UpickleDerivationW}
 import utest._
 
 /**
@@ -7,6 +7,8 @@ import utest._
 */
 object TestUtilAuto extends TestUtil[upickle.default.type](upickle.default) {
   val derive = new UpickleDerivation[upickle.default.type](upickle.default)
+  val deriveR = new UpickleDerivationR[upickle.default.type](upickle.default)
+  val deriveW = new UpickleDerivationW[upickle.default.type](upickle.default)
 }
 
 object TestUtil extends TestUtil[upickle.default.type](upickle.default)

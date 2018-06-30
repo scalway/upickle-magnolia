@@ -41,9 +41,11 @@ trait UpickleSupportR extends UpickleSupportCommon {
   import upickleApi0._
   type Typeclass[T] <: Reader[T]
 
-  def deriveCaseRTagged[T](ctx:CC[T]): TaggedReader[T] = {
-    new TaggedReader.Leaf[T](ccName[T](ctx), deriveCaseR(ctx))
+  class TaggedReader2[T](ctx:CC[T]) extends TaggedReader.Leaf[T](ccName[T](ctx), deriveCaseR(ctx)) {
+    val name = ccName(ctx)
   }
+
+  def deriveCaseRTagged[T](ctx:CC[T]): TaggedReader2[T] = new TaggedReader2[T](ctx)
 
   def deriveCaseR[T](ctx:CC[T]) = JsObjR.map[T] { r =>
     ctx.construct(p => {
@@ -89,6 +91,7 @@ class UpickleDerivationW[A <: Api](override val upickleApi0:Api) extends Upickle
   type Typeclass[T] = Writer[T]
   def combine[T:ClassTag](ctx: CC[T]): Typeclass[T] = deriveCaseWTagged(ctx)
   def dispatch[T](ctx: ST[T]): Typeclass[T] = Writer.merge[T](dispatch0(ctx) :_*)
+
   implicit def autoWriter[T]: Typeclass[T] = macro Magnolia.gen[T]
   def writerOf[T]: Typeclass[T] = macro Magnolia.gen[T]
 }
@@ -98,6 +101,7 @@ class UpickleDerivationR[A <: Api](override val upickleApi0:A) extends UpickleSu
   type Typeclass[T] = Reader[T]
   def combine[T:ClassTag](ctx: CC[T]): Typeclass[T] = deriveCaseRTagged(ctx)
   def dispatch[T](ctx: ST[T]): Typeclass[T] = Reader.merge[T](dispatch0(ctx) :_*)
+
   implicit def autoReader[T]: Typeclass[T] = macro Magnolia.gen[T]
   def readerOf[T]: Typeclass[T] = macro Magnolia.gen[T]
 }
@@ -106,14 +110,26 @@ class UpickleDerivation[A <: Api](override val upickleApi0:A) extends UpickleSup
   import upickleApi0._
   type Typeclass[T] = ReadWriter[T]
   def combine[T:ClassTag](ctx: CC[T]): Typeclass[T] = {
-    val r1 = deriveCaseRTagged(ctx)
-    val w1 = deriveCaseWTagged(ctx)
-    new TaggedReadWriter[T] {
-      def findReader(s: String) = r1.findReader(s)
-      def findWriter(v: Any) = w1.findWriter(v)
+    new TaggedReader2[T](ctx) with TaggedReadWriter[T] {
+      val reader = deriveCaseR(ctx)
+      val writer = deriveCaseW(ctx)
+      override def findReader(s: String) = if (name == s) reader else null
+      override def findWriter(v: Any): (String, upickleApi0.CaseW[T]) =
+        if (implicitly[ClassTag[T]].runtimeClass.isInstance(v)) (name -> writer)
+        else null
     }
   }
-  def dispatch[T](ctx: ST[T]): Typeclass[T] =  ReadWriter.merge[T](dispatch0(ctx) :_*)
+
+  def dispatch[T](ctx: ST[T]): Typeclass[T] =  {
+    val allDispatches = dispatch0(ctx).asInstanceOf[Seq[TaggedReadWriter[T]]]
+    new TaggedReadWriter.Node[T](allDispatches :_*) {
+      override def findReader(s: String): upickleApi0.Reader[T] = allDispatches.collectFirst {
+        case x if x.findReader(s) != null => x.findReader(s)
+      }.getOrElse(null)
+      override def findWriter(v: Any): (String, upickleApi0.CaseW[T]) = super.findWriter(v)
+    }
+  }
+
   implicit def autoReadWriter[T]: Typeclass[T] = macro Magnolia.gen[T]
   def readWriterOf[T]: Typeclass[T] = macro Magnolia.gen[T]
 }
